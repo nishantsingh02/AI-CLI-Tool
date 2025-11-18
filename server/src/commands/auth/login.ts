@@ -13,13 +13,15 @@ import yoctoSpinner from "yocto-spinner"; // show a spinner in a terminal
 import * as z from "zod";
 import dotenv from "dotenv";
 import prisma from "../../lib/db.js";
+import { error } from "node:console";
 
 dotenv.config();
 
-const URL = "http://localhost:3001";
+const URL = "http://localhost:3001"; // backend URL
 const CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 const CONFIG_DIR = path.join(os.homedir(), ".better-auth"); // create a hidden folder in the user hoom dir
 const TOKEN_FILE = path.join(CONFIG_DIR, "token.json"); // inside that folder save a token.json file
+
 
 export async function loginAction() {
   const options = z.object({
@@ -86,22 +88,114 @@ export async function loginAction() {
     } = data;
 
     console.log(chalk.cyan("Device Authorization Required"));
-    console.log(`please visit" ${chalk.underline.blue(verification_uri || verification_uri_complete)} `)
-     console.log(`Enter code: ${chalk.bold.green(user_code)}`);
+    console.log(
+      `please visit" ${chalk.underline.blue(
+        verification_uri || verification_uri_complete
+      )} `
+    );
+    console.log(`Enter code: ${chalk.bold.green(user_code)}`);
 
     const shouldOpen = await confirm({
-        message: "Open browser automatically",
-        initialValue: true
-    })
+      message: "Open browser automatically",
+      initialValue: true,
+    });
 
-    if(!isCancel(shouldOpen) && shouldOpen) {
-        const urlToOpen = verification_uri || verification_uri_complete;
-        await open(urlToOpen)
+    if (!isCancel(shouldOpen) && shouldOpen) {
+      const urlToOpen = verification_uri || verification_uri_complete;
+      await open(urlToOpen);
     }
 
-    console.log(chalk.gray(`Waiting for authorization (expires in ${Math.floor(expires_in / 60)} minutes)...`));
+    console.log(
+      chalk.gray(
+        `Waiting for authorization (expires in ${Math.floor(
+          expires_in / 60
+        )} minutes)...`
+      )
+    );
 
-  } catch (error) {}
+    // polling for the token
+    const token = await pollForToken({
+      authClient,
+      device_code,
+      clientId,
+      interval,
+    });
+
+    async function pollForToken(
+      authClient,
+      device_code,
+      clientId,
+      initailInterval
+    ) {
+      let pollingInterval = initailInterval;
+      const spinner = yoctoSpinner({ text: "", color: "cyan" });
+      let dots = 0;
+
+      return new Promise((resolve, reject) => {
+        const poll = async () => {
+          dots = (dots + 1) % 4;
+          spinner.text = chalk.gray(
+            `Polling for authorization${".".repeat(dots)}${" ".repeat(
+              3 - dots
+            )}}`
+          );
+          if (!spinner.isSpinning) spinner.start();
+
+          // polling implimantaion
+          try {
+            const { data, error } = await authClient.device.token({
+              grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+              device_code: device_code,
+              client_id: id,
+              fetchOptions: {
+                headers: {
+                  "user-agent": `My CLI`,
+                },
+              },
+            });
+
+            if (data?.access.token) {
+              console.log(
+                chalk.bold.yellow(`Your access token: ${data.access.token}`)
+              );
+              spinner.stop();
+              resolve(data);
+            } else if (error) {
+              switch (error.error) {
+                case "authorization_pending":
+                  // Continue polling
+                  break;
+                case "slow_down":
+                  pollingInterval += 5;
+                  break;
+                case "access_denied":
+                  console.error("Access was denied by the user");
+                  return;
+                case "expired_token":
+                  console.error(
+                    "The device code has expired. Please try again."
+                  );
+                  return;
+                default:
+                    spinner.stop()
+                  logger.error(`Error: ${error.error_description}`); // logger is from better auth
+                  process.exit(1)
+              }
+            }
+          } catch (error) {
+                  spinner.stop();
+                  logger.error(`Network error: ${error}`); // logger is from better auth
+                  process.exit(1)
+          }
+          setTimeout(poll, pollingInterval * 1000)
+        };
+        setTimeout(poll, pollingInterval * 1000)
+      });
+    }
+  } catch (error) {
+    spinner.stop();
+    console.log(chalk.red("Unexpected error during authorization"));
+  }
 }
 
 // command setup

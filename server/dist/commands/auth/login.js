@@ -57,24 +57,36 @@ export async function loginAction() {
         });
         spinner.stop();
         if (error || !data) {
-            logger.error(`Failed to request device authorization: ${error.error_description}`);
+            logger.error(`Failed to request device authorization: ${error?.error_description}`);
             process.exit(1);
         }
         const { device_code, user_code, verification_uri, verification_uri_complete, expires_in, interval, } = data;
-        console.log(chalk.cyan("Device Authorization Required"));
-        console.log(`please visit" ${chalk.underline.blue(verification_uri || verification_uri_complete)} `);
-        console.log(`Enter code: ${chalk.bold.green(user_code)}`);
+        // Choose correct URL
+        const urlToOpen = verification_uri_complete ||
+            verification_uri ||
+            "";
+        console.log(chalk.cyan("\nDevice Authorization Required"));
+        console.log(`Visit: ${chalk.underline.blue(urlToOpen)}`);
+        console.log(`Enter Code: ${chalk.bold.green(user_code)}\n`);
+        // Ask user to auto-open browser
         const shouldOpen = await confirm({
-            message: "Open browser automatically",
-            initialValue: true
+            message: "Open browser automatically?",
+            initialValue: true,
         });
-        if (!isCancel(shouldOpen) && shouldOpen) {
-            const urlToOpen = verification_uri || verification_uri_complete;
-            await open(urlToOpen);
+        if (isCancel(shouldOpen)) {
+            cancel("Login cancelled.");
+            process.exit(0);
+        }
+        if (shouldOpen) {
+            console.log(chalk.gray("Opening browser..."));
+            await open(urlToOpen); // 🔥 Browser will open here
         }
         console.log(chalk.gray(`Waiting for authorization (expires in ${Math.floor(expires_in / 60)} minutes)...`));
     }
-    catch (error) { }
+    catch (error) {
+        spinner.stop();
+        console.log(chalk.red("Unexpected error during authorization"));
+    }
 }
 // command setup
 export const login = new Command("login")
