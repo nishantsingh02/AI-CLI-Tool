@@ -1,1 +1,1 @@
-{"root":["./src/index.ts","./src/lib/auth.ts","./src/lib/db.ts"],"version":"5.9.3"}
+{"root":["./src/index.ts","./src/cli/main.ts","./src/commands/auth/login.ts","./src/lib/auth.ts","./src/lib/db.ts"],"version":"5.9.3"}
