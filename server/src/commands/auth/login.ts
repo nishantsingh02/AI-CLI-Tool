@@ -13,14 +13,14 @@ import yoctoSpinner from "yocto-spinner"; // show a spinner in a terminal
 import * as z from "zod";
 import dotenv from "dotenv";
 import prisma from "../../lib/db.js";
-import { error } from "node:console";
+import { getStoredToken, isTokenExpired, storeToken } from "../../lib/token.js";
 
 dotenv.config();
 
 const URL = "http://localhost:3001"; // backend URL
 const CLIENT_ID = process.env.GITHUB_CLIENT_ID;
-const CONFIG_DIR = path.join(os.homedir(), ".better-auth"); // create a hidden folder in the user hoom dir
-const TOKEN_FILE = path.join(CONFIG_DIR, "token.json"); // inside that folder save a token.json file
+export const CONFIG_DIR = path.join(os.homedir(), ".better-auth"); // create a hidden folder in the user hoom dir
+export const TOKEN_FILE = path.join(CONFIG_DIR, "token.json"); // inside that folder save a token.json file
 
 
 export async function loginAction() {
@@ -36,9 +36,9 @@ export async function loginAction() {
 
   intro(chalk.bold("Auth CLI Login"));
 
-  // TODO: Change this with token mangment utils
-  const existingToken = false;
-  const expired = false;
+  // token mangment
+  const existingToken = await getStoredToken();
+  const expired = await isTokenExpired();
 
   // this line checks whether the user canceled the request OR said “no.”
   // this confirm return true or false. user cancle the process or not
@@ -87,24 +87,27 @@ export async function loginAction() {
       interval,
     } = data;
 
+    // display auth instruction
     console.log(chalk.cyan("Device Authorization Required"));
     console.log(
       `please visit" ${chalk.underline.blue(
-        verification_uri || verification_uri_complete
+        verification_uri_complete || verification_uri
       )} `
     );
     console.log(`Enter code: ${chalk.bold.green(user_code)}`);
 
+    // ask user wants to open the browser
     const shouldOpen = await confirm({
       message: "Open browser automatically",
       initialValue: true,
     });
 
     if (!isCancel(shouldOpen) && shouldOpen) {
-      const urlToOpen = verification_uri || verification_uri_complete;
+      const urlToOpen =  verification_uri_complete || verification_uri
       await open(urlToOpen);
     }
 
+    // start polling
     console.log(
       chalk.gray(
         `Waiting for authorization (expires in ${Math.floor(
@@ -117,19 +120,61 @@ export async function loginAction() {
     const token = await pollForToken({
       authClient,
       device_code,
-      clientId,
+      clientId: id,
       interval,
     });
 
-    async function pollForToken(
-      authClient,
+    if (token) {
+      const saved = await storeToken(token);
+
+      if (!saved) {
+        console.log(
+          chalk.yellow("\n⚠️  Warning: Could not save authentication token.")
+        );
+        console.log(
+          chalk.yellow("   You may need to login again on next use.")
+        );
+      }
+
+      //TODO: get the user data
+      outro(
+        chalk.gray("You can use AI Commands without loggin again.\n")
+      );
+
+      console.log(chalk.gray(`\n📁 Token saved to: ${TOKEN_FILE}`));
+      console.log(
+        chalk.gray("   You can now use AI commands without logging in again.\n")
+      );
+    }
+  } catch (error) {
+    spinner.stop();
+    console.log(chalk.red("Unexpected error during authorization"), error);
+    process.exit(1);
+  }
+}
+
+   async function pollForToken(
+      {authClient,
       device_code,
       clientId,
-      initailInterval
+      interval} : any
     ) {
-      let pollingInterval = initailInterval;
+      let pollingInterval = interval ?? 5;
       const spinner = yoctoSpinner({ text: "", color: "cyan" });
       let dots = 0;
+      let timeoutId: NodeJS.Timeout | null = null; // track the timeout
+
+      // clean up function 
+      const cleanup = () => {
+        if(timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        } 
+        if (spinner.isSpinning) {
+          spinner.stop(); // stop the spinner
+        }
+      }
+
 
       return new Promise((resolve, reject) => {
         const poll = async () => {
@@ -146,7 +191,7 @@ export async function loginAction() {
             const { data, error } = await authClient.device.token({
               grant_type: "urn:ietf:params:oauth:grant-type:device_code",
               device_code: device_code,
-              client_id: id,
+              client_id: clientId,  // client_id: clientId, try this if something brakes
               fetchOptions: {
                 headers: {
                   "user-agent": `My CLI`,
@@ -158,45 +203,51 @@ export async function loginAction() {
               console.log(
                 chalk.bold.yellow(`Your access token: ${data.access.token}`)
               );
-              spinner.stop();
-              resolve(data);
+              cleanup();
+              resolve(data); // promiss is getting resloved here
+              return; // stop further execution
             } else if (error) {
               switch (error.error) {
                 case "authorization_pending":
                   // Continue polling
+                  timeoutId = setTimeout(poll, pollingInterval * 1000);
                   break;
                 case "slow_down":
                   pollingInterval += 5;
+                  timeoutId = setTimeout(poll, pollingInterval * 1000);
                   break;
                 case "access_denied":
+                  cleanup();
                   console.error("Access was denied by the user");
+                  reject(new Error("Access Denied"))
                   return;
                 case "expired_token":
+                  cleanup();
                   console.error(
                     "The device code has expired. Please try again."
                   );
+                  reject(new Error("Token expired"));
                   return;
                 default:
-                    spinner.stop()
+                  cleanup();
                   logger.error(`Error: ${error.error_description}`); // logger is from better auth
-                  process.exit(1)
+                  reject(new Error(error.error_description || "Unknown error"));
+                  return
               }
+            } else {
+              // Continue polling if no data and no error
+          timeoutId = setTimeout(poll, pollingInterval * 1000);
             }
           } catch (error) {
-                  spinner.stop();
+                  cleanup();
                   logger.error(`Network error: ${error}`); // logger is from better auth
-                  process.exit(1)
+                  reject(error);
           }
-          setTimeout(poll, pollingInterval * 1000)
         };
-        setTimeout(poll, pollingInterval * 1000)
+        // start the first poll
+       timeoutId = setTimeout(poll, pollingInterval * 1000)
       });
     }
-  } catch (error) {
-    spinner.stop();
-    console.log(chalk.red("Unexpected error during authorization"));
-  }
-}
 
 // command setup
 

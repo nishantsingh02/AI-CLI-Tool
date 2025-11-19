@@ -19,6 +19,11 @@ app.get("/api/me", async (req, res) => {
     });
     return res.json(session);
 });
+// http:localhost:3001/device => backend url 
+app.get("/device", async function (req, res) {
+    const { user_code } = req.query;
+    res.redirect(`http://localhost:3000/device?user_code=${user_code}`);
+});
 app.get("/nishu", function (req, res) {
     return res.json({
         msg: "hello nishu. every this is working fine"
