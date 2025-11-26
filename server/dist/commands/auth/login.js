@@ -12,7 +12,7 @@ import yoctoSpinner from "yocto-spinner"; // show a spinner in a terminal
 import * as z from "zod";
 import dotenv from "dotenv";
 import prisma from "../../lib/db.js";
-import { getStoredToken, isTokenExpired, storeToken } from "../../lib/token.js";
+import { clearStoredToken, getStoredToken, isTokenExpired, requireAuth, storeToken } from "../../lib/token.js";
 dotenv.config();
 const URL = "http://localhost:3001"; // backend URL
 const CLIENT_ID = process.env.GITHUB_CLIENT_ID;
@@ -117,6 +117,7 @@ async function pollForToken({ authClient, device_code, clientId, interval }) {
             spinner.stop(); // stop the spinner
         }
     };
+    // this promiss is from better-auth docs
     return new Promise((resolve, reject) => {
         const poll = async () => {
             dots = (dots + 1) % 4;
@@ -135,8 +136,9 @@ async function pollForToken({ authClient, device_code, clientId, interval }) {
                         },
                     },
                 });
-                if (data?.access.token) {
-                    console.log(chalk.bold.yellow(`Your access token: ${data.access.token}`));
+                // console.log("DEBUG TOKEN RESPONSE:", data);
+                if (data?.access_token) {
+                    console.log(chalk.bold.yellow(`Your access token: ${data.access_token}`));
                     cleanup();
                     resolve(data); // promiss is getting resloved here
                     return; // stop further execution
@@ -183,10 +185,71 @@ async function pollForToken({ authClient, device_code, clientId, interval }) {
         timeoutId = setTimeout(poll, pollingInterval * 1000);
     });
 }
+export async function logoutAction() {
+    intro(chalk.bold("Logout"));
+    const token = await getStoredToken();
+    if (!token) {
+        console.log(chalk.yellow("you're not logged in."));
+        process.exit(0);
+    }
+    const shouldLogout = await confirm({
+        message: "Are you sure you want to logout",
+        initialValue: false,
+    });
+    if (isCancel(shouldLogout) || !shouldLogout) {
+        cancel("Logout Cancelled");
+        process.exit(0);
+    }
+    const cleared = await clearStoredToken();
+    if (cleared) {
+        outro(chalk.green("Successfully logged out!"));
+    }
+    else {
+        console.log(chalk.yellow("Could not clear token file."));
+    }
+}
+// who am i action
+export async function whoamiAction() {
+    const token = await requireAuth();
+    if (!token?.access_token) {
+        console.log("No access token found. Please login.");
+        process.exit(1);
+    }
+    const user = await prisma.user.findFirst({
+        where: {
+            sessions: {
+                some: {
+                    token: token.access_token
+                }
+            }
+        },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            image: true
+        }
+    });
+    console.log(chalk.bold.greenBright('\n┌─────────────────────────────────────────┐'));
+    console.log(chalk.bold.greenBright('│') + chalk.bold.whiteBright('        USER INFORMATION         ') + chalk.bold.greenBright('        │'));
+    console.log(chalk.bold.greenBright('├─────────────────────────────────────────┤'));
+    console.log(chalk.bold.greenBright('│ ') + chalk.cyan('Name:  ') + chalk.white(user?.name?.padEnd(28)) + chalk.bold.greenBright(' │'));
+    console.log(chalk.bold.greenBright('│ ') + chalk.cyan('Email: ') + chalk.white(user?.email?.padEnd(28)) + chalk.bold.greenBright(' │'));
+    console.log(chalk.bold.greenBright('│ ') + chalk.cyan('ID:    ') + chalk.white(user?.id?.padEnd(28)) + chalk.bold.greenBright(' │'));
+    console.log(chalk.bold.greenBright('└─────────────────────────────────────────┘\n'));
+}
 // command setup
 export const login = new Command("login")
     .description("Authenticate your CLI and link it with your account.")
     .option("--server-url <url>", "The Better Auth server URL", URL)
     .option("--client-id <id>", "The OAuth client ID", CLIENT_ID)
     .action(loginAction);
+export const logout = new Command("logout")
+    .description("Authenticate your CLI and link it with your account.")
+    .description("Logout and clear the stored credentials")
+    .action(logoutAction);
+export const whoami = new Command("whoami")
+    .description("Authenticate your CLI and link it with your account.")
+    .option("--server-url <url>", "The Better Auth server URL", URL)
+    .action(whoamiAction);
 //# sourceMappingURL=login.js.map

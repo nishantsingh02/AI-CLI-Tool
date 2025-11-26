@@ -5,7 +5,7 @@ import chalk from "chalk";
 import figlet from "figlet";
 import gradient from "gradient-string";
 import { Command } from "commander";
-import { login } from "../commands/auth/login.js";
+import { login, logout, whoami } from "../commands/auth/login.js";
 
 dotenv.config();
 
@@ -69,6 +69,8 @@ function main() {
         .version("1.0.0", "-v, --version");
 
     program.addCommand(login) // from login.ts
+    program.addCommand(logout)
+    program.addCommand(whoami)
 
     program.configureHelp({ helpWidth: 0 });
     program.helpOption(false);      // removes -h and --help

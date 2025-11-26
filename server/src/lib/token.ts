@@ -67,6 +67,8 @@ export async function isTokenExpired() {
   return expiresAt.getTime() - now.getTime() < 5 * 60 * 1000;
 }
 
+
+// get the token
 export async function requireAuth() {
   const token = await getStoredToken();
 
