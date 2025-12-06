@@ -1,1 +1,1 @@
-{"root":["./src/index.ts","./src/cli/main.ts","./src/commands/auth/login.ts","./src/lib/auth.ts","./src/lib/db.ts","./src/lib/token.ts"],"version":"5.9.3"}
+{"root":["./src/index.ts","./src/cli/main.ts","./src/cli/ai/google-service.ts","./src/cli/ai/wakeup.ts","./src/commands/auth/login.ts","./src/config/google.config.ts","./src/lib/auth.ts","./src/lib/db.ts","./src/lib/token.ts"],"version":"5.9.3"}

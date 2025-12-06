@@ -5,6 +5,7 @@ import figlet from "figlet";
 import gradient from "gradient-string";
 import { Command } from "commander";
 import { login, logout, whoami } from "../commands/auth/login.js";
+import { wakeUp } from "./ai/wakeUp.js";
 dotenv.config();
 function main() {
     try {
@@ -49,6 +50,7 @@ function main() {
         program.addCommand(login); // from login.ts
         program.addCommand(logout);
         program.addCommand(whoami);
+        program.addCommand(wakeUp);
         program.configureHelp({ helpWidth: 0 });
         program.helpOption(false); // removes -h and --help
         program.addHelpCommand(false); // removes "help" subcommand

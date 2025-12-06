@@ -1,0 +1,1 @@
+{"version":3,"file":"google-service.d.ts","sourceRoot":"","sources":["../../../src/cli/ai/google-service.ts"],"names":[],"mappings":"AAKA,qBAAa,SAAS;IAClB,OAAO,CAAC,KAAK,CAAM;;IAgBb,WAAW,CAAC,QAAQ,EAAE,GAAG,EAAE,OAAO,EAAE,GAAG,EAAE,KAAK,YAAY,EAAE,UAAU,OAAO;;;;;IAkC7E,UAAU,CAAC,QAAQ,EAAE,GAAG,EAAE,KAAK,YAAY;CAUpD"}
